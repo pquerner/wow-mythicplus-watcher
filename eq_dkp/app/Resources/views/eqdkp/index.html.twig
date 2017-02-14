@@ -1,0 +1,117 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <div id="wrapper">
+        <div id="container">
+            <div id="welcome">
+                <h1><span>EQDKP - Raidmember mit 15+ Mythic Keystones</h1>
+            </div>
+
+            <p>Wir haben {{ data['membersWith15PlusKeysCount'] }} Raidmember, die einen 15+ Keystone diese Woche
+                gelaufen sind.</p>
+            {% if data['membersWith15PlusKeysCount'] != data['membersWithKeysCount'] %}
+                <p>Wir haben {{ data['membersWithKeysCount'] }} Raidmember, die einen Keystone diese Woche gelaufen
+                    sind.</p>
+                <p>(Aber nicht in den Rankings sind oder keine 15+ Keys waren.)</p>
+            {% endif %}
+
+            <ul>
+                {% for member in data['membersWith15Plus'] %}
+                    <li>{{ member }}</a></li>
+                {% endfor %}
+            </ul>
+
+        </div>
+    </div>
+{% endblock %}
+
+{% block stylesheets %}
+    <style>
+        body {
+            background: #F5F5F5;
+            font: 18px/1.5 sans-serif;
+        }
+
+        h1, h2 {
+            line-height: 1.2;
+            margin: 0 0 .5em;
+        }
+
+        h1 {
+            font-size: 36px;
+        }
+
+        h2 {
+            font-size: 21px;
+            margin-bottom: 1em;
+        }
+
+        p {
+            margin: 0 0 1em 0;
+        }
+
+        a {
+            color: #0000F0;
+        }
+
+        a:hover {
+            text-decoration: none;
+        }
+
+        code {
+            background: #F5F5F5;
+            max-width: 100px;
+            padding: 2px 6px;
+            word-wrap: break-word;
+        }
+
+        #wrapper {
+            background: #FFF;
+            margin: 1em auto;
+            max-width: 800px;
+            width: 95%;
+        }
+
+        #container {
+            padding: 2em;
+        }
+
+        #welcome {
+            margin-bottom: 2em;
+        }
+
+        #welcome h1 span {
+            display: block;
+            font-size: 75%;
+        }
+
+        @media (min-width: 768px) {
+            #wrapper {
+                width: 80%;
+                margin: 2em auto;
+            }
+
+            #status a, #next a {
+                display: block;
+            }
+
+            @-webkit-keyframes fade-in {
+                0% {
+                    opacity: 0;
+                }
+                100% {
+                    opacity: 1;
+                }
+            }
+            @keyframes fade-in {
+                0% {
+                    opacity: 0;
+                }
+                100% {
+                    opacity: 1;
+                }
+            }
+
+        }
+    </style>
+{% endblock %}
