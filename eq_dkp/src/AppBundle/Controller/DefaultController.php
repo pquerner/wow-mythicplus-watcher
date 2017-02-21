@@ -235,6 +235,8 @@ class DefaultController extends Controller
     /**
      * Returns whether or not current request is valid for this operation
      *
+     * @TODO remove calculation of non empty array values to own method and use app wide (see near line 123)
+     *
      * @return bool
      */
     private function validateRequest():bool
