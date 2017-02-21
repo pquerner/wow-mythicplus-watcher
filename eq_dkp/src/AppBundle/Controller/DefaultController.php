@@ -11,15 +11,21 @@ use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
 use Symfony\Component\Cache\CacheItem;
-use Symfony\Component\Config\Definition\Exception\Exception;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\Request;
 
 class DefaultController extends Controller
 {
+    /** @var int - Rule: only count in members which are this level
+
+     * @TODO remove rule to own class or something
+     */
     const MAX_LEVEL = 110;
+    /** @var array - Holds the error messages which might happen during runtime. Will be cached on filesystem later on. */
     private $_errors = [];
+    /** @var string - Holds Predefined string for WoW dungeon leaderboards. Will be later on manipulated via sprintf */
     const BASE_URL_LEADERBOARD = "https://worldofwarcraft.com/en-gb/game/pve/leaderboards/%s/%s"; //server, dungeon
+    /** @var array - Current available dungeons with leaderboards */
     private $_dungeons = [
         'neltharions-lair',
         'black-rook-hold',
@@ -42,7 +48,12 @@ class DefaultController extends Controller
     private $_currentTimestamp;
 
     /**
+     * Default route.
+     *
+     * @param $request - Current Request Object
+     *
      * @Route("/", name="home")
+     * @return string - Compiled html or simple messages by die()
      */
     public function indexAction(Request $request)
     {
@@ -61,6 +72,8 @@ class DefaultController extends Controller
         $cachedErrors->set($this->_errors);
         $this->get('cache.app')->save($cachedErrors);
 
+        //@TODO move to own method
+        //Filter members with 15+ keys, count
         $membersWithKeysCount = 0;
         $membersWith15PlusKeysCount = 0;
         $membersWith15PlusKeys = [];
@@ -77,6 +90,7 @@ class DefaultController extends Controller
             }
         }
 
+        //Remove duplicates and populate data array for template
         $membersWith15PlusKeys = array_unique($membersWith15PlusKeys);
         $data = [
             "membersWith15Plus" => $membersWith15PlusKeys,
@@ -107,6 +121,7 @@ class DefaultController extends Controller
         $members = [];
         if (!$cachedGuildMembers->isHit()) {
             try {
+                //@TODO remove api key (will be fun with git logs...)
                 /** @var BlizzardClient $client */
                 $client = new \BlizzardApi\BlizzardClient('rfap5vgxshjmq62m6vmgck9htegnhswh', 'N73NpzUMTZ2tGJQyXettuzqyXbsrSaKJ', 'eu', 'en_gb');
                 /** @var WorldOfWarcraft $wow */
@@ -132,7 +147,7 @@ class DefaultController extends Controller
                 $cachedGuildMembers->set($members);
                 $this->get('cache.app')->save($cachedGuildMembers);
             } catch (RequestException $e) {
-                if (404 !== $e->getCode()) {
+                if (404 !== $e->getCode()) { //404 errors are fine, they happen when blizzard fucked up somewhere?!
                     $this->_errors['guild_fetch_error'][$this->_currentTimestamp][] = $e;
                 }
             }
