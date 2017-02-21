@@ -55,7 +55,9 @@ class DefaultController extends Controller
         $cachedErrors = $this->get('cache.app')->getItem('app_errors');
         if (!$this->validateRequest()) die("Request invalid!");
         $members = $this->getMembers($request->query->get('guild'), $request->query->get('realm'));
+        if (empty($members)) die('Keine Member gefunden. Parameter ueberpruefen!');
         $members = $this->getMemberRunKeysCurrently($members);
+        if (empty($members)) die('Keine Member sind Keys gelaufen!');
         $cachedErrors->set($this->_errors);
         $this->get('cache.app')->save($cachedErrors);
 
@@ -102,6 +104,7 @@ class DefaultController extends Controller
         /** @var CacheItem $cachedGuildMembers */
         $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s', $guildName, $realmName));
         $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('1 week'));
+        $members = [];
         if (!$cachedGuildMembers->isHit()) {
             try {
                 /** @var BlizzardClient $client */
@@ -128,8 +131,10 @@ class DefaultController extends Controller
                 }
                 $cachedGuildMembers->set($members);
                 $this->get('cache.app')->save($cachedGuildMembers);
-            } catch (Exception $e) {
-                //TODO save exception
+            } catch (RequestException $e) {
+                if (404 !== $e->getCode()) {
+                    $this->_errors['guild_fetch_error'][$this->_currentTimestamp][] = $e;
+                }
             }
         } else {
             $members = $cachedGuildMembers->get();
