@@ -5,22 +5,19 @@ namespace AppBundle\Controller;
 use BlizzardApi\BlizzardClient;
 use BlizzardApi\Service\WorldOfWarcraft;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Response;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
 use Symfony\Component\Cache\CacheItem;
+use Symfony\Component\Config\Definition\Exception\Exception;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\Request;
 
 class DefaultController extends Controller
 {
     const MAX_LEVEL = 110;
-    private $_guildRanks = [
-        3, //Raider
-        1, //Offi
-        0, //GM
-    ];
     private $_errors = [];
     const BASE_URL_LEADERBOARD = "https://worldofwarcraft.com/en-gb/game/pve/leaderboards/%s/%s"; //server, dungeon
     private $_dungeons = [
@@ -35,13 +32,32 @@ class DefaultController extends Controller
         'vault-of-the-wardens',
     ];
 
+    /** @var  CacheItem */
+    private $_cachedErrors;
+
+    /** @var  Request */
+    private $_request;
+
+    /** @var int - Holds the current unixtimestamp (set after indexAction is called) - For error log purpose */
+    private $_currentTimestamp;
+
     /**
      * @Route("/", name="home")
      */
     public function indexAction(Request $request)
     {
-        $members = $this->getMembers("equilibria", "anub'arak");
+        $this->_currentTimestamp = time();
+        if (!$request->query->get('guild')) die('Keine Gilde genannt. Bitte GET Parameter "guild" setzen!');
+        if (!$request->query->get('realm')) die('Keine Gilde genannt. Bitte GET Parameter "realm" setzen!');
+        if (!$request->query->get('granks')) die('Keine Gildenranks genannt. Bitte GET Parameter "granks" setzen!');
+        $this->_request = $request;
+        /** @var CacheItem $cachedErrors */
+        $cachedErrors = $this->get('cache.app')->getItem('app_errors');
+        if (!$this->validateRequest()) die("Request invalid!");
+        $members = $this->getMembers($request->query->get('guild'), $request->query->get('realm'));
         $members = $this->getMemberRunKeysCurrently($members);
+        $cachedErrors->set($this->_errors);
+        $this->get('cache.app')->save($cachedErrors);
 
         $membersWithKeysCount = 0;
         $membersWith15PlusKeysCount = 0;
@@ -86,31 +102,37 @@ class DefaultController extends Controller
     protected function getMembers(string $guildName, string $realmName):array
     {
         /** @var CacheItem $cachedGuildMembers */
-        $cachedGuildMembers = $this->get('cache.app')->getItem('guild_members');
+        $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s', $guildName, $realmName));
         $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('1 week'));
         if (!$cachedGuildMembers->isHit()) {
+            try {
+                /** @var BlizzardClient $client */
+                $client = new \BlizzardApi\BlizzardClient('rfap5vgxshjmq62m6vmgck9htegnhswh', 'N73NpzUMTZ2tGJQyXettuzqyXbsrSaKJ', 'eu', 'en_gb');
+                /** @var WorldOfWarcraft $wow */
+                $wow = new \BlizzardApi\Service\WorldOfWarcraft($client);
 
-            /** @var BlizzardClient $client */
-            $client = new \BlizzardApi\BlizzardClient('rfap5vgxshjmq62m6vmgck9htegnhswh', 'N73NpzUMTZ2tGJQyXettuzqyXbsrSaKJ', 'eu', 'en_gb');
-            /** @var WorldOfWarcraft $wow */
-            $wow = new \BlizzardApi\Service\WorldOfWarcraft($client);
-
-            $response = $wow->getGuild($realmName, $guildName, [
-                'fields' => 'members',
-            ]);
-            $members = [];
-            if (200 == $response->getStatusCode()) {
-                $arrayOfGuildInformation = (array)\GuzzleHttp\json_decode((string)$response->getBody());
-                if (isset($arrayOfGuildInformation['members']) && !empty($arrayOfGuildInformation['members'])) {
-                    foreach ($arrayOfGuildInformation['members'] as $member) {
-                        if ($member->character->level === self::MAX_LEVEL && in_array($member->rank, $this->_guildRanks)) {
-                            $members[] = $member;
+                $response = $wow->getGuild($realmName, $guildName, [
+                    'fields' => 'members',
+                ]);
+                $members = [];
+                if (200 == $response->getStatusCode()) {
+                    $arrayOfGuildInformation = (array)\GuzzleHttp\json_decode((string)$response->getBody());
+                    if (isset($arrayOfGuildInformation['members']) && !empty($arrayOfGuildInformation['members'])) {
+                        foreach ($arrayOfGuildInformation['members'] as $member) {
+                            if ($member->character->level === self::MAX_LEVEL && in_array($member->rank, array_filter(explode(',', $this->_request->get('granks')), function ($k) {
+                                    return is_numeric($k);
+                                }, ARRAY_FILTER_USE_BOTH))
+                            ) {
+                                $members[] = $member;
+                            }
                         }
                     }
                 }
+                $cachedGuildMembers->set($members);
+                $this->get('cache.app')->save($cachedGuildMembers);
+            } catch (Exception $e) {
+                //TODO save exception
             }
-            $cachedGuildMembers->set($members);
-            $this->get('cache.app')->save($cachedGuildMembers);
         } else {
             $members = $cachedGuildMembers->get();
         }
@@ -128,25 +150,37 @@ class DefaultController extends Controller
     protected function getMemberRunKeysCurrently($members):array
     {
         /** @var CacheItem $cachedKeysMembers */
-        $cachedKeysMembers = $this->get('cache.app')->getItem('members_keys');
+        $cachedKeysMembers = $this->get('cache.app')->getItem(sprintf('members_keys_%s-%s', $this->_request->query->get('guild'), $this->_request->query->get('realm')));
         $cachedKeysMembers->expiresAfter(\DateInterval::createFromDateString('1 week'));
         if (!$cachedKeysMembers->isHit()) {
             if (!empty($members)) {
                 foreach ($members as $member) {
                     foreach ($this->_dungeons as $dungeon) {
-                        $uri = sprintf(self::BASE_URL_LEADERBOARD,
-                            strtolower(str_replace(['\''], [''], $member->character->realm)),
-                            $dungeon);
-                        /** @var Client $client */
-                        $client = new Client();
-                        /** @var Response $request */
-                        $response = $client->get($uri);
-                        $htmlDomLeaderboard = (string)$response->getBody();
+                        $htmlDomLeaderboard = NULL;
+                        try {
+                            $uri = sprintf(self::BASE_URL_LEADERBOARD,
+                                strtolower(str_replace(['\''], [''], $member->character->realm)),
+                                $dungeon);
+                            /** @var Client $client */
+                            $client = new Client();
+                            /** @var Response $request */
+                            $response = $client->get($uri);
+                            if ($response->getStatusCode() === 200) {
+                                $htmlDomLeaderboard = (string)$response->getBody();
+                            }
+                        } catch (RequestException $e) {
+                            if ($e->getCode() !== 404) { //Ignore 404 errors, some end on blizzard fucked up, not me!
+                                $this->_errors['e_findingLeaderboards'][$this->_currentTimestamp][$member->character->name][] = [$dungeon, 'error' => $e];
+                            }
+                        }
+                        if (NULL === $htmlDomLeaderboard) continue;
                         $urlArmory = sprintf('http://eu.battle.net/wow/en/character/%s/%s/simple',
                             strtolower(str_replace(['\''], [''], $member->character->realm)),
                             $member->character->name);
                         if (stripos($htmlDomLeaderboard, $urlArmory) !== FALSE) {
                             //Is found at least, now check the mythic difficulty
+
+                            //I need to convert encoding to ensure I find the people inside DOM html string (somehow stripos overlooks this?!)
                             $htmlDomLeaderboard = mb_convert_encoding($htmlDomLeaderboard, 'HTML-ENTITIES', 'UTF-8');
                             $crawler = new Crawler($htmlDomLeaderboard);
                             $i = 0;
@@ -178,7 +212,7 @@ class DefaultController extends Controller
                                 ];
 
                             } catch (\InvalidArgumentException $e) {
-                                $this->_errors['e_findingKey'][$member->character->name][] = [$dungeon, 'error' => $e];
+                                $this->_errors['e_findingKey'][$this->_currentTimestamp][$member->character->name][] = [$dungeon, 'error' => $e];
                             }
                         } else {
                             //Member not found in current ranking for this current dungeon, possible didnt do a "high" M+ run or something else happend
@@ -192,5 +226,20 @@ class DefaultController extends Controller
             $members = $cachedKeysMembers->get();
         }
         return $members;
+    }
+
+
+    /**
+     * Returns whether or not current request is valid for this operation
+     *
+     * @return bool
+     */
+    private function validateRequest():bool
+    {
+        return is_string($this->_request->get('guild'))
+        && is_string($this->_request->get('realm'))
+        && count(array_filter(explode(',', $this->_request->get('granks')), function ($k) {
+            return is_numeric($k);
+        }, ARRAY_FILTER_USE_BOTH)) >= 1;
     }
 }
