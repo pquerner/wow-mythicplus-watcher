@@ -67,11 +67,9 @@ class DefaultController extends Controller
                 $membersWithKeysCount++;
                 //FIXME members should be accounted for one 15+ key a week!
                 foreach ($member->m_plus_information as $dungeonMythic) {
-                    if (TRUE === $dungeonMythic['keystone_greaterOr15']) {
-                        if (!in_array($member->character->name, $membersWith15PlusKeys)) {
-                            $membersWith15PlusKeysCount++;
-                            $membersWith15PlusKeys[] = $member->character->name;
-                        }
+                    if (TRUE === $dungeonMythic['keystone_greaterOr15'] && !in_array($member->character->name, $membersWith15PlusKeys)) {
+                        $membersWith15PlusKeysCount++;
+                        $membersWith15PlusKeys[] = $member->character->name;
                     }
                 }
             }
