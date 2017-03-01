@@ -17,3 +17,7 @@ parameters:
 
     # A secret key that's used to generate certain security-related tokens
     secret:            ThisTokenIsNotSoSecretChangeIt
+
+    # API Key and Secret for Blizzards API
+    blizzard_apikey:
+    blizzard_apisecret:

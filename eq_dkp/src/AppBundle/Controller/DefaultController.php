@@ -117,15 +117,15 @@ class DefaultController extends Controller
     {
         /** @var CacheItem $cachedGuildMembers */
         $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s', $guildName, $realmName));
-        $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('1 week'));
+        $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('2 days'));
         $members = [];
         if (!$cachedGuildMembers->isHit()) {
             try {
                 //@TODO remove api key (will be fun with git logs...)
                 /** @var BlizzardClient $client */
-                $client = new \BlizzardApi\BlizzardClient('rfap5vgxshjmq62m6vmgck9htegnhswh', 'N73NpzUMTZ2tGJQyXettuzqyXbsrSaKJ', 'eu', 'en_gb');
+                $client = new BlizzardClient($this->getParameter('blizzard_apikey'), $this->getParameter('blizzard_apisecret'), 'eu', 'en_gb');
                 /** @var WorldOfWarcraft $wow */
-                $wow = new \BlizzardApi\Service\WorldOfWarcraft($client);
+                $wow = new WorldOfWarcraft($client);
 
                 $response = $wow->getGuild($realmName, $guildName, [
                     'fields' => 'members',
@@ -169,7 +169,7 @@ class DefaultController extends Controller
     {
         /** @var CacheItem $cachedKeysMembers */
         $cachedKeysMembers = $this->get('cache.app')->getItem(sprintf('members_keys_%s-%s', $this->_request->query->get('guild'), $this->_request->query->get('realm')));
-        $cachedKeysMembers->expiresAfter(\DateInterval::createFromDateString('1 week'));
+        $cachedKeysMembers->expiresAfter(\DateInterval::createFromDateString('2 days'));
         if (!$cachedKeysMembers->isHit()) {
             if (!empty($members)) {
                 foreach ($members as $member) {
