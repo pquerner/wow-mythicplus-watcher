@@ -4,19 +4,17 @@
     <div id="wrapper">
         <div id="container">
             <div id="welcome">
-                <h1><span>EQDKP - Raidmember mit 15+ Mythic Keystones</h1>
+                <h1><span>Mythic Keystones Watcher</h1>
             </div>
 
-            <p>Wir haben {{ data['membersWith15PlusKeysCount'] }} Raidmember, die einen 15+ Keystone diese Woche
-                gelaufen sind.</p>
-            {% if data['membersWith15PlusKeysCount'] != data['membersWithKeysCount'] %}
-                <p>Wir haben {{ data['membersWithKeysCount'] }} Raidmember, die einen Keystone diese Woche gelaufen
-                    sind.</p>
-                <p>(Aber nicht in den Rankings sind oder keine 15+ Keys waren.)</p>
+            <p>We got {{ data['membersWithPlusKeyCount'] }} raid members, which ran a high mythicplus key this week.</p>
+            {% if data['membersWithPlusKeyCount'] != data['membersWithKeysCount'] %}
+                <p>We got {{ data['membersWithKeysCount'] }} raid members which ran any keystone this week.</p>
+                <p>(Might not be in the rankings)</p>
             {% endif %}
 
             <ul>
-                {% for member in data['membersWith15Plus'] %}
+                {% for member in data['membersWithPlus'] %}
                     <li>{{ member }}</a></li>
                 {% endfor %}
             </ul>

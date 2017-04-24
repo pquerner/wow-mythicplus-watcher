@@ -19,5 +19,6 @@ parameters:
     secret:            ThisTokenIsNotSoSecretChangeIt
 
     # API Key and Secret for Blizzards API
+    # See dev.battle.net for more information
     blizzard_apikey:
     blizzard_apisecret:
