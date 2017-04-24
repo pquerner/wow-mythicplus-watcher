@@ -50,10 +50,10 @@ You then have to enter the API key here in the file "eq_dkp/app/config/parameter
 </VirtualHost>
 
 3) Call the application in your webbrowser like
-http://<domain>/?guild=uprising&realm=zuluhed&granks=8,4,9,0&region=eu
+http://domain/?guild=uprising&realm=zuluhed&granks=8,4,9,0&region=eu
 4) Needed GET Parameters are:
-guild - represents the guild name
-realm - realmname
-granks - only those guild ranks will be "looked after"
-region - which region the server/guild combo is in
+- guild - represents the guild name
+- realm - realmname
+- granks - only those guild ranks will be "looked after"
+- region - which region the server/guild combo is in
 5) Which then hopefully yields and status output in your browser.
