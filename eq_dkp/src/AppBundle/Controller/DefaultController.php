@@ -1,5 +1,4 @@
 <?php
-
 namespace AppBundle\Controller;
 
 use BlizzardApi\BlizzardClient;
@@ -23,7 +22,7 @@ class DefaultController extends Controller
     /** @var array - Holds the error messages which might happen during runtime. Will be cached on filesystem later on. */
     private $_errors = [];
     /** @var string - Holds Predefined string for WoW dungeon leaderboards. Will be later on manipulated via sprintf */
-    const BASE_URL_LEADERBOARD = "https://worldofwarcraft.com/en-gb/game/pve/leaderboards/%s/%s"; //server, dungeon
+    const BASE_URL_LEADERBOARD = "https://worldofwarcraft.com/%s/game/pve/leaderboards/%s/%s"; //region, server, dungeon
     /** @var int - Defines to check for this key as highest. */
     const CHECK_HIGHEST_KEY = 10;
     /** @var array - Current available dungeons with leaderboards */
@@ -71,6 +70,8 @@ class DefaultController extends Controller
         /** @var CacheItem $cachedErrors */
         $cachedErrors = $this->get('cache.app')->getItem('app_errors');
         if (!$this->validateRequest()) die("Request invalid!");
+        if ($request->query->get('granks') === 'any')
+            $request->query->set('granks', implode(',', range(0, 9)));
         $members = $this->getMembers($request->query->get('guild'), $request->query->get('realm'), $request->query->get('region'));
         if (empty($members)) die('No Guild members found!');
         $members = $this->getMemberRunKeysCurrently($members);
@@ -79,14 +80,14 @@ class DefaultController extends Controller
         $this->get('cache.app')->save($cachedErrors);
 
         //@TODO move to own method
-        //Filter members with 15+ keys, count
+        //Filter members with + keys, count
         $membersWithKeysCount = 0;
         $membersWithPlusKeyCount = 0;
         $membersWithPlusKeys = [];
         foreach ($members as $member) {
             if (isset($member->m_plus_information)) {
                 $membersWithKeysCount++;
-                //FIXME members should be accounted for one 15+ key a week! (@TODO I dont know why I meant with this fixme .. lol..)
+                //FIXME members should be accounted for one + key a week! (@TODO I dont know why I meant with this fixme .. lol..)
                 foreach ($member->m_plus_information as $dungeonMythic) {
                     if (TRUE === $dungeonMythic[sprintf('keystone_greaterOr%s', self::CHECK_HIGHEST_KEY)] && !in_array($member->character->name, $membersWithPlusKeys)) {
                         $membersWithPlusKeyCount++;
@@ -117,10 +118,10 @@ class DefaultController extends Controller
      *
      * @param string $guildName - Guild name
      * @param string $realmName - Guilds home realm (if connected realm, enter realm-name where it was first created)
-     * @param string $region - Region the guild is on. Available options = "eu", "us", "kr", "tw"
+     * @param string $region - Region the guild is on. Available options = "eu", "us"
      * @return array - Array of members, 1D
      */
-    protected function getMembers(string $guildName, string $realmName, string $region = "eu"):array
+    protected function getMembers(string $guildName, string $realmName, string $region):array
     {
         /** @var CacheItem $cachedGuildMembers */
         $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s-%s', $guildName, $realmName, $region));
@@ -128,18 +129,12 @@ class DefaultController extends Controller
         $members = [];
         if (!$cachedGuildMembers->isHit()) {
             try {
-                /** @var string $locale - Local einformation, needed for API call */
+                /** @var string $locale - Local information, needed for API call */
                 //@TODO outsource this :|
                 $locale = "en_gb";
                 switch ($region) {
                     case 'us':
                         $locale = "en_us";
-                        break;
-                    case 'tw':
-                        $locale = "zh_tw";
-                        break;
-                    case 'kr':
-                        $locale = "ko_kr";
                         break;
                 }
                 /** @var BlizzardClient $client */
@@ -196,10 +191,20 @@ class DefaultController extends Controller
         if (!$cachedKeysMembers->isHit()) {
             if (!empty($members)) {
                 foreach ($members as $member) {
+                    if (!isset($member->character->realm)) continue; //Sometimes this fails, so better check than be sorry.
                     foreach ($this->_dungeons as $dungeon) {
                         $htmlDomLeaderboard = NULL;
                         try {
-                            $uri = sprintf(self::BASE_URL_LEADERBOARD,
+                            //@TODO outsource this
+                            $region = "en_gb";
+                            $url = self::BASE_URL_LEADERBOARD;
+                            switch ($this->_request->query->get('region')) {
+                                case 'us':
+                                    $region = "en_us";
+                                    break;
+                            }
+                            $uri = sprintf($url,
+                                $region,
                                 strtolower(str_replace(['\''], [''], $member->character->realm)),
                                 $dungeon);
                             /** @var Client $client */
@@ -215,14 +220,8 @@ class DefaultController extends Controller
                             }
                         }
                         if (NULL === $htmlDomLeaderboard) continue;
-                        /** @var string $locale - Locale information on how the URIs look like */
+                        /** @var string $locale - Locale information on how the URIs look like, might look different each region */
                         $locale = "en";
-                        switch ($this->_request->query->get('region')) {
-                            case 'tw':
-                            case 'kr':
-                                $locale = "zh";
-                                break;
-                        }
                         $urlArmory = sprintf('http://%s.battle.net/wow/%s/character/%s/%s/simple',
                             $this->_request->query->get('region'),
                             $locale,
@@ -239,7 +238,7 @@ class DefaultController extends Controller
                                 if ($crawler->filter("a[href='" . $urlArmory . "']")->count()) {
                                     $nodes = $crawler->filter("a[href='" . $urlArmory . "']")->parents()->each(function (Crawler $node, $i) {
                                         if ($i == 3) { //This is so I only receive this current table-td
-                                            return $node->text();
+                                            return $node->children();
                                         }
                                         $i++;
                                     });
@@ -247,18 +246,20 @@ class DefaultController extends Controller
                                     //User couldnt be retrieved from DOM, so far I found no other solution. The info is lost, the user must report to DKP master themselfes.
                                 }
                                 if (empty($nodes)) continue;
-                                $emptyRemoved = array_filter($nodes, 'strlen');
-
-                                $rawStringInformation = end($emptyRemoved);
-                                $ranking = mb_substr($rawStringInformation, 0, 2);
-                                $mythicKey = mb_substr($rawStringInformation, 2, 2);
-                                $date = mb_substr($rawStringInformation, -10); //date format: m/d/y
+                                $nodes = array_filter($nodes);
+                                /** @var Crawler $node */
+                                $node = current($nodes);
+                                $ranking = $node->getNode(0)->textContent;
+                                $mythicKey = $node->getNode(1)->textContent;
+                                $dateCompleted = $node->getNode(4)->textContent; //date format: m/d/y
+                                $completedIn = $node->getNode(2)->textContent;
 
                                 $member->m_plus_information[] = [
                                     'dungeon' => $dungeon,
-                                    'leaderboard_rank' => $ranking,
-                                    'keystone' => $mythicKey,
-                                    'date' => $date,
+                                    'leaderboardRank' => $ranking,
+                                    'keyStone' => $mythicKey,
+                                    'dateCompleted' => $dateCompleted,
+                                    'completedIn' => $completedIn,
                                     sprintf('keystone_greaterOr%d', self::CHECK_HIGHEST_KEY) => (bool)(intval($mythicKey) >= self::CHECK_HIGHEST_KEY),
                                 ];
 
@@ -292,8 +293,9 @@ class DefaultController extends Controller
         return is_string($this->_request->get('guild'))
         && is_string($this->_request->get('realm'))
         && is_string($this->_request->get('region'))
-        && count(array_filter(explode(',', $this->_request->get('granks')), function ($k) {
-            return is_numeric($k);
-        }, ARRAY_FILTER_USE_BOTH)) >= 1;
+        && in_array($this->_request->get('region'), ['us', 'eu'])
+        && (count(array_filter(explode(',', $this->_request->get('granks')), function ($k) {
+                return is_numeric($k);
+            }, ARRAY_FILTER_USE_BOTH)) >= 1 || $this->_request->get('granks') === 'any');
     }
 }

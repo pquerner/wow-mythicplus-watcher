@@ -53,7 +53,7 @@ You then have to enter the API key here in the file "eq_dkp/app/config/parameter
 http://domain/?guild=uprising&realm=zuluhed&granks=8,4,9,0&region=eu
 4) Needed GET Parameters are:
 - guild - represents the guild name
-- realm - realmname
-- granks - only those guild ranks will be "looked after"
-- region - which region the server/guild combo is in
+- realm - realm name
+- granks - only those guild ranks will be "looked after" (Comma seperated list, or 'any')
+- region - which region the server/guild combo is in (Currently supported: eu, us)
 5) Which then hopefully yields and status output in your browser.
