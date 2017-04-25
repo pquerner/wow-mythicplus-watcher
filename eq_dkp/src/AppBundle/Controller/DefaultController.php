@@ -37,6 +37,9 @@ class DefaultController extends Controller
         'maw-of-souls',
         'the-arcway',
         'vault-of-the-wardens',
+        'cathedral-of-eternal-night',
+        'return-to-karazhan-lower',
+        'return-to-karazhan-upper',
     ];
 
     /** @var  CacheItem */
