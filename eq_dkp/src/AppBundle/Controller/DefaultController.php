@@ -1,4 +1,5 @@
 <?php
+
 namespace AppBundle\Controller;
 
 use BlizzardApi\BlizzardClient;
@@ -55,6 +56,7 @@ class DefaultController extends Controller
      *
      * url guild=myth&realm=mal%27ganis&granks=any&region=eu
      * @Route("/", name="home")
+     *
      * @return string - Compiled html or simple messages by die()
      */
     public function indexAction(Request $request)
@@ -80,33 +82,47 @@ class DefaultController extends Controller
 
         //@TODO move to own method
         //Filter members with + keys, count
-        $membersWithKeysCount = 0;
+        $membersWithKeysCount    = 0;
         $membersWithPlusKeyCount = 0;
-        $membersWithPlusKeys = [];
+        $membersWithPlusKeys     = [];
+        $memberChecked           = [];
         foreach ($members as $member) {
             if (isset($member->m_plus_information)) {
                 $membersWithKeysCount++;
                 //FIXME members should be accounted for one + key a week! (@TODO I dont know why I meant with this fixme .. lol..)
                 foreach ($member->m_plus_information as $dungeonMythic) {
-                    if (TRUE === $dungeonMythic[sprintf('keystone_greaterOr%s', self::CHECK_HIGHEST_KEY)] && !in_array($member->character->name, $membersWithPlusKeys)) {
+                    $membersWithPlusKeys[$member->character->name]['all'][] = $dungeonMythic;
+                    if (TRUE === $dungeonMythic[sprintf('keystone_greaterOr%s', self::CHECK_HIGHEST_KEY)]
+                        && !isset($memberChecked[$member->character->name])
+                    ) {
+                        $memberChecked[$member->character->name] = TRUE;
                         $membersWithPlusKeyCount++;
-                        $membersWithPlusKeys[] = $member->character->name;
                     }
                 }
+                $bestKey                                               = (function ($arr): array {
+                    $last = 0;
+                    $best = NULL;
+                    foreach ($arr as $item) {
+                        if ((int)$item['keyStone'] > $last) {
+                            $best = $item;
+                            $last = (int)$item['keyStone'];
+                        }
+                    }
+                    return $best;
+                })($membersWithPlusKeys[$member->character->name]['all']);
+                $membersWithPlusKeys[$member->character->name]['best'] = $bestKey;
             }
         }
-
-        //Remove duplicates and populate data array for template
-        $membersWithPlusKeys = array_unique($membersWithPlusKeys);
         $data = [
-            "membersWithPlus" => $membersWithPlusKeys,
+            "membersWithPlus"         => $membersWithPlusKeys,
+            "minHigh"                 => self::CHECK_HIGHEST_KEY . '+',
             "membersWithPlusKeyCount" => $membersWithPlusKeyCount,
-            "membersWithKeysCount" => $membersWithKeysCount,
+            "membersWithKeysCount"    => $membersWithKeysCount,
         ];
 
         return $this->render('mythicplus/index.html.twig', [
             'base_dir' => realpath($this->getParameter('kernel.root_dir') . '/..') . DIRECTORY_SEPARATOR,
-            'data' => $data
+            'data'     => $data
         ]);
     }
 
@@ -117,10 +133,11 @@ class DefaultController extends Controller
      *
      * @param string $guildName - Guild name
      * @param string $realmName - Guilds home realm (if connected realm, enter realm-name where it was first created)
-     * @param string $region - Region the guild is on. Available options = "eu", "us"
+     * @param string $region    - Region the guild is on. Available options = "eu", "us"
+     *
      * @return array - Array of members, 1D
      */
-    protected function getMembers(string $guildName, string $realmName, string $region):array
+    protected function getMembers(string $guildName, string $realmName, string $region): array
     {
         /** @var CacheItem $cachedGuildMembers */
         $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s-%s', $guildName, $realmName, $region));
@@ -144,7 +161,7 @@ class DefaultController extends Controller
                 $response = $wow->getGuild($realmName, $guildName, [
                     'fields' => 'members',
                 ]);
-                $members = [];
+                $members  = [];
                 if (200 == $response->getStatusCode()) {
                     $arrayOfGuildInformation = (array)\GuzzleHttp\json_decode((string)$response->getBody());
                     if (isset($arrayOfGuildInformation['members']) && !empty($arrayOfGuildInformation['members'])) {
@@ -177,9 +194,10 @@ class DefaultController extends Controller
      * @TODO this method looks ugly, go clean it up
      *
      * @param $members - Array of Members and some details (ie. ranks, realm-name, name, ..)
+     *
      * @return array - Array of Members with key identification (if any)
      */
-    protected function getMemberRunKeysCurrently($members):array
+    protected function getMemberRunKeysCurrently($members): array
     {
         /** @var CacheItem $cachedKeysMembers */
         $cachedKeysMembers = $this->get('cache.app')->getItem(sprintf('members_keys_%s-%s-%s',
@@ -196,7 +214,7 @@ class DefaultController extends Controller
                         try {
                             //@TODO outsource this
                             $region = "en_gb";
-                            $url = self::BASE_URL_LEADERBOARD;
+                            $url    = self::BASE_URL_LEADERBOARD;
                             switch ($this->_request->query->get('region')) {
                                 case 'us':
                                     $region = "en_us";
@@ -228,7 +246,7 @@ class DefaultController extends Controller
 
                             //I need to convert encoding to ensure I find the people inside DOM html string (somehow stripos overlooks this?!)
                             $htmlDomLeaderboard = mb_convert_encoding($htmlDomLeaderboard, 'HTML-ENTITIES', 'UTF-8');
-                            $crawler = new Crawler($htmlDomLeaderboard);
+                            $crawler            = new Crawler($htmlDomLeaderboard);
                             try {
                                 if ($crawler->filter("a[href='" . $urlArmory . "']")->count()) {
                                     $nodes = $crawler->filter("a[href='" . $urlArmory . "']")->parents()->each(function (Crawler $node, $i) {
@@ -242,18 +260,18 @@ class DefaultController extends Controller
                                 if (empty($nodes)) continue;
                                 $nodes = array_filter($nodes);
                                 /** @var Crawler $node */
-                                $node = current($nodes);
-                                $ranking = $node->getNode(0)->textContent;
-                                $mythicKey = $node->getNode(1)->textContent;
+                                $node          = current($nodes);
+                                $ranking       = $node->getNode(0)->textContent;
+                                $mythicKey     = $node->getNode(1)->textContent;
                                 $dateCompleted = $node->getNode(4)->textContent; //date format: m/d/y
-                                $completedIn = $node->getNode(2)->textContent;
+                                $completedIn   = $node->getNode(2)->textContent;
 
                                 $member->m_plus_information[] = [
-                                    'dungeon' => $dungeon,
-                                    'leaderboardRank' => $ranking,
-                                    'keyStone' => $mythicKey,
-                                    'dateCompleted' => $dateCompleted,
-                                    'completedIn' => $completedIn,
+                                    'dungeon'                                                => $dungeon,
+                                    'leaderboardRank'                                        => $ranking,
+                                    'keyStone'                                               => $mythicKey,
+                                    'dateCompleted'                                          => $dateCompleted,
+                                    'completedIn'                                            => $completedIn,
                                     sprintf('keystone_greaterOr%d', self::CHECK_HIGHEST_KEY) => (bool)(intval($mythicKey) >= self::CHECK_HIGHEST_KEY),
                                 ];
                             } catch (\InvalidArgumentException $e) {
@@ -281,14 +299,15 @@ class DefaultController extends Controller
      *
      * @return bool
      */
-    private function validateRequest():bool
+    private function validateRequest(): bool
     {
         return is_string($this->_request->get('guild'))
-        && is_string($this->_request->get('realm'))
-        && is_string($this->_request->get('region'))
-        && in_array($this->_request->get('region'), ['us', 'eu'])
-        && (count(array_filter(explode(',', $this->_request->get('granks')), function ($k) {
-                return is_numeric($k);
-            }, ARRAY_FILTER_USE_BOTH)) >= 1 || $this->_request->get('granks') === 'any');
+               && is_string($this->_request->get('realm'))
+               && is_string($this->_request->get('region'))
+               && in_array($this->_request->get('region'), ['us', 'eu'])
+               && (count(array_filter(explode(',', $this->_request->get('granks')), function ($k) {
+                    return is_numeric($k);
+                }, ARRAY_FILTER_USE_BOTH)) >= 1
+                   || $this->_request->get('granks') === 'any');
     }
 }

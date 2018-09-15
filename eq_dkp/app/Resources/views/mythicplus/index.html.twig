@@ -7,15 +7,16 @@
                 <h1><span>Mythic Keystones Watcher</h1>
             </div>
 
-            <p>We got {{ data['membersWithPlusKeyCount'] }} raid members, which ran a high mythicplus key this week.</p>
+            <p>We got {{ data['membersWithPlusKeyCount'] }} raid members, which ran a high {{ data['minHigh'] }} mythicplus key this week.</p>
             {% if data['membersWithPlusKeyCount'] != data['membersWithKeysCount'] %}
                 <p>We got {{ data['membersWithKeysCount'] }} raid members which ran any keystone this week.</p>
-                <p>(Might not be in the rankings)</p>
+                <p>(Or they might not be in the rankings, but still ran a {{ data['minHigh'] }})</p>
             {% endif %}
 
             <ul>
-                {% for member in data['membersWithPlus'] %}
-                    <li>{{ member }}</a></li>
+                {% for charname, _d in data['membersWithPlus'] %}
+                    <li>{{ charname }}</li>
+                    {{ dump(_d) }}
                 {% endfor %}
             </ul>
 
