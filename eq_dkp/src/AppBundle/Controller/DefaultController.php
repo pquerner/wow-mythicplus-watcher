@@ -18,7 +18,7 @@ class DefaultController extends Controller
     /** @var int - Rule: only count in members which are this level
      * @TODO remove rule to own class or something
      */
-    const MAX_LEVEL = 110;
+    const MAX_LEVEL = 120;
     /** @var array - Holds the error messages which might happen during runtime. Will be cached on filesystem later on. */
     private $_errors = [];
     /** @var string - Holds Predefined string for WoW dungeon leaderboards. Will be later on manipulated via sprintf */
@@ -27,18 +27,16 @@ class DefaultController extends Controller
     const CHECK_HIGHEST_KEY = 10;
     /** @var array - Current available dungeons with leaderboards */
     private $_dungeons = [
-        'neltharions-lair',
-        'black-rook-hold',
-        'court-of-stars',
-        'darkheart-thicket',
-        'eye-of-azshara',
-        'halls-of-valor',
-        'maw-of-souls',
-        'the-arcway',
-        'vault-of-the-wardens',
-        'cathedral-of-eternal-night',
-        'return-to-karazhan-lower',
-        'return-to-karazhan-upper',
+        'ataldazar',
+        'Freehold',
+        'kings-rest',
+        'shrine-of-the-storm',
+        'siege-of-boralus',
+        'temple-of-sethraliss',
+        'the-motherlode',
+        'the-underrot',
+        'tol-dagor',
+        'waycrest-manor',
     ];
 
     /** @var  CacheItem */
@@ -55,6 +53,7 @@ class DefaultController extends Controller
      *
      * @param $request - Current Request Object
      *
+     * url guild=myth&realm=mal%27ganis&granks=any&region=eu
      * @Route("/", name="home")
      * @return string - Compiled html or simple messages by die()
      */
@@ -113,7 +112,7 @@ class DefaultController extends Controller
 
     /**
      * Returns a guild members, if some rules apply to each individual member
-     * Current rules: level 110, Guildrank is GM, Officer or Raider
+     * Current rules: level 120, Guildrank is GM, Officer or Raider
      *
      *
      * @param string $guildName - Guild name
@@ -220,11 +219,8 @@ class DefaultController extends Controller
                             }
                         }
                         if (NULL === $htmlDomLeaderboard) continue;
-                        /** @var string $locale - Locale information on how the URIs look like, might look different each region */
-                        $locale = "en";
-                        $urlArmory = sprintf('http://%s.battle.net/wow/%s/character/%s/%s/simple',
-                            $this->_request->query->get('region'),
-                            $locale,
+                        $urlArmory = sprintf('/%s/character/%s/%s',
+                            str_replace(['_'], ['-'], $region),
                             strtolower(str_replace(['\''], [''], $member->character->realm)),
                             $member->character->name);
                         if (stripos($htmlDomLeaderboard, $urlArmory) !== FALSE) {
@@ -233,14 +229,12 @@ class DefaultController extends Controller
                             //I need to convert encoding to ensure I find the people inside DOM html string (somehow stripos overlooks this?!)
                             $htmlDomLeaderboard = mb_convert_encoding($htmlDomLeaderboard, 'HTML-ENTITIES', 'UTF-8');
                             $crawler = new Crawler($htmlDomLeaderboard);
-                            $i = 0;
                             try {
                                 if ($crawler->filter("a[href='" . $urlArmory . "']")->count()) {
                                     $nodes = $crawler->filter("a[href='" . $urlArmory . "']")->parents()->each(function (Crawler $node, $i) {
                                         if ($i == 3) { //This is so I only receive this current table-td
                                             return $node->children();
                                         }
-                                        $i++;
                                     });
                                 } else {
                                     //User couldnt be retrieved from DOM, so far I found no other solution. The info is lost, the user must report to DKP master themselfes.
@@ -262,7 +256,6 @@ class DefaultController extends Controller
                                     'completedIn' => $completedIn,
                                     sprintf('keystone_greaterOr%d', self::CHECK_HIGHEST_KEY) => (bool)(intval($mythicKey) >= self::CHECK_HIGHEST_KEY),
                                 ];
-
                             } catch (\InvalidArgumentException $e) {
                                 $this->_errors['e_findingKey'][$this->_currentTimestamp][$member->character->name][] = [$dungeon, 'error' => $e];
                             }
