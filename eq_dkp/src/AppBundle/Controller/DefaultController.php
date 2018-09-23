@@ -7,6 +7,8 @@ use BlizzardApi\Service\WorldOfWarcraft;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Response;
+use Knp\Bundle\PaginatorBundle\KnpPaginatorBundle;
+use Knp\Component\Pager\Paginator;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
@@ -27,18 +29,21 @@ class DefaultController extends Controller
     /** @var int - Defines to check for this key as highest. */
     const CHECK_HIGHEST_KEY = 10;
     /** @var array - Current available dungeons with leaderboards */
-    private $_dungeons = [
-        'ataldazar',
-        'Freehold',
-        'kings-rest',
-        'shrine-of-the-storm',
-        'siege-of-boralus',
-        'temple-of-sethraliss',
-        'the-motherlode',
-        'the-underrot',
-        'tol-dagor',
-        'waycrest-manor',
-    ];
+    private $_dungeons
+        = [
+            'ataldazar',
+            'Freehold',
+            'kings-rest',
+            'shrine-of-the-storm',
+            'siege-of-boralus',
+            'temple-of-sethraliss',
+            'the-motherlode',
+            'the-underrot',
+            'tol-dagor',
+            'waycrest-manor',
+        ];
+
+    const LIMIT_PER_PAGE = 5;
 
     /** @var  CacheItem */
     private $_cachedErrors;
@@ -73,7 +78,9 @@ class DefaultController extends Controller
         if (!$this->validateRequest()) die("Request invalid!");
         if ($request->query->get('granks') === 'any')
             $request->query->set('granks', implode(',', range(0, 9)));
-        $members = $this->getMembers($request->query->get('guild'), $request->query->get('realm'), $request->query->get('region'));
+        $members = $this->getMembers($request->query->get('guild'),
+            $request->query->get('realm'),
+            $request->query->get('region'));
         if (empty($members)) die('No Guild members found!');
         $members = $this->getMemberRunKeysCurrently($members);
         if (empty($members)) die('No Members did run any keys I"m afraid.');
@@ -120,9 +127,17 @@ class DefaultController extends Controller
             "membersWithKeysCount"    => $membersWithKeysCount,
         ];
 
+        /** @var Paginator $paginator */
+        $paginator  = $this->get('knp_paginator');
+        $pagination = $paginator->paginate(
+            $data['membersWithPlus'],
+            $request->query->getInt('page', 1),
+            self::LIMIT_PER_PAGE
+        );
         return $this->render('mythicplus/index.html.twig', [
-            'base_dir' => realpath($this->getParameter('kernel.root_dir') . '/..') . DIRECTORY_SEPARATOR,
-            'data'     => $data
+            'base_dir'   => realpath($this->getParameter('kernel.root_dir') . '/..') . DIRECTORY_SEPARATOR,
+            'data'       => $data,
+            'pagination' => $pagination
         ]);
     }
 
@@ -141,7 +156,7 @@ class DefaultController extends Controller
     {
         /** @var CacheItem $cachedGuildMembers */
         $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s-%s', $guildName, $realmName, $region));
-        $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('2 days'));
+        $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('1 day'));
         $members = [];
         if (!$cachedGuildMembers->isHit()) {
             try {
@@ -166,7 +181,8 @@ class DefaultController extends Controller
                     $arrayOfGuildInformation = (array)\GuzzleHttp\json_decode((string)$response->getBody());
                     if (isset($arrayOfGuildInformation['members']) && !empty($arrayOfGuildInformation['members'])) {
                         foreach ($arrayOfGuildInformation['members'] as $member) {
-                            if ($member->character->level === self::MAX_LEVEL && in_array($member->rank, array_filter(explode(',', $this->_request->get('granks')), function ($k) {
+                            if ($member->character->level === self::MAX_LEVEL
+                                && in_array($member->rank, array_filter(explode(',', $this->_request->get('granks')), function ($k) {
                                     return is_numeric($k);
                                 }, ARRAY_FILTER_USE_BOTH))
                             ) {
@@ -199,16 +215,19 @@ class DefaultController extends Controller
      */
     protected function getMemberRunKeysCurrently($members): array
     {
-        /** @var CacheItem $cachedKeysMembers */
-        $cachedKeysMembers = $this->get('cache.app')->getItem(sprintf('members_keys_%s-%s-%s',
-            $this->_request->query->get('guild'),
-            $this->_request->query->get('realm'),
-            $this->_request->query->get('region')));
-        $cachedKeysMembers->expiresAfter(\DateInterval::createFromDateString('2 days'));
-        if (!$cachedKeysMembers->isHit()) {
-            if (!empty($members)) {
-                foreach ($members as $member) {
-                    if (!isset($member->character->realm)) continue; //Sometimes this fails, so better check than be sorry.
+        if (!empty($members)) {
+            foreach ($members as &$member) {
+                if (!isset($member->character->realm)) continue; //Sometimes this fails, so better check than be sorry.
+                /** @var CacheItem $cachedKeysMember */
+                $cachedKeysMember = $this->get('cache.app')->getItem(sprintf('member_keys_%s-%s-%s_%s',
+                        $this->_request->query->get('guild'),
+                        $this->_request->query->get('realm'),
+                        $this->_request->query->get('region'),
+                        $member->character->name
+                    )
+                );
+                $cachedKeysMember->expiresAfter(\DateInterval::createFromDateString('1 day'));
+                if (!$cachedKeysMember->isHit()) {
                     foreach ($this->_dungeons as $dungeon) {
                         $htmlDomLeaderboard = NULL;
                         try {
@@ -281,12 +300,12 @@ class DefaultController extends Controller
                             //Member not found in current ranking for this current dungeon, possible didnt do a "high" M+ run or something else happend
                         }
                     }
+                    $cachedKeysMember->set($member);
+                    $this->get('cache.app')->save($cachedKeysMember);
+                } else {
+                    $member = $cachedKeysMember->get();
                 }
-                $cachedKeysMembers->set($members);
-                $this->get('cache.app')->save($cachedKeysMembers);
             }
-        } else {
-            $members = $cachedKeysMembers->get();
         }
         return $members;
     }

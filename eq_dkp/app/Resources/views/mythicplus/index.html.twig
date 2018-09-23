@@ -14,11 +14,15 @@
             {% endif %}
 
             <ul>
-                {% for charname, _d in data['membersWithPlus'] %}
+                {% for charname, _d in pagination %}
                     <li>{{ charname }}</li>
                     {{ dump(_d) }}
                 {% endfor %}
             </ul>
+
+            <div class="navigation">
+                {{ knp_pagination_render(pagination) }}
+            </div>
 
         </div>
     </div>

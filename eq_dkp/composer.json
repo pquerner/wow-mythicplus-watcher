@@ -30,7 +30,8 @@
         "incenteev/composer-parameter-handler": "^2.0",
         "logansua/blizzard-api-client": "^2.0",
         "eightpoints/guzzle-bundle": "^5.3",
-        "symfony/cache": "^3.2"
+        "symfony/cache": "^3.2",
+        "knplabs/knp-paginator-bundle": "^2.8"
     },
     "require-dev": {
         "sensio/generator-bundle": "^3.0",
