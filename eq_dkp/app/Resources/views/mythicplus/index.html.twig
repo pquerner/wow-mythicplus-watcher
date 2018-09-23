@@ -15,8 +15,15 @@
 
             <ul>
                 {% for charname, _d in pagination %}
-                    <li>{{ charname }}</li>
-                    {{ dump(_d) }}
+                    <li>{{ charname }} (best key only)</li>
+                    {% for k, dungeons in _d %}
+                        {% if k == "best" %}
+                            {% for dungeonK, dungeonV in dungeons %}
+                                <p>{{ dungeonK }} => {{ dungeonV|e }}</p>
+                            {% endfor %}
+                        {% endif %}
+                    {% endfor %}
+                    <br /><br />
                 {% endfor %}
             </ul>
 
@@ -50,7 +57,7 @@
         }
 
         p {
-            margin: 0 0 1em 0;
+            margin: 0;
         }
 
         a {
