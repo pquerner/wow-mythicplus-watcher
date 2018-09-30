@@ -156,7 +156,7 @@ class DefaultController extends Controller
     {
         /** @var CacheItem $cachedGuildMembers */
         $cachedGuildMembers = $this->get('cache.app')->getItem(sprintf('guild_members_%s-%s-%s', $guildName, $realmName, $region));
-        $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('1 day'));
+        $cachedGuildMembers->expiresAfter(\DateInterval::createFromDateString('6 hours'));
         $members = [];
         if (!$cachedGuildMembers->isHit()) {
             try {
@@ -226,7 +226,7 @@ class DefaultController extends Controller
                         $member->character->name
                     )
                 );
-                $cachedKeysMember->expiresAfter(\DateInterval::createFromDateString('1 day'));
+                $cachedKeysMember->expiresAfter(\DateInterval::createFromDateString('6 hours'));
                 if (!$cachedKeysMember->isHit()) {
                     foreach ($this->_dungeons as $dungeon) {
                         $htmlDomLeaderboard = NULL;
